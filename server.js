@@ -4,6 +4,7 @@ import bodyParser from "body-parser";
 import * as crypto from "crypto";
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
+import fs from 'fs'
 
 const app = express();
 const logger = pino(pinoPretty());
@@ -21,29 +22,51 @@ app.use((req, res, next) => {
   next();
 });
 
-let tickets = [
-  {
-    id: 1,
-    name: "Поменять краску в принтере, ком. 404",
-    description: "Принтер HP LJ-1210, картриджи на складе",
-    status: false,
-    created: Date.now(),
-  },
-  {
-    id: 2,
-    name: "Переустановить Windows, PC-Hall24",
-    description: "",
-    status: false,
-    created: Date.now(),
-  },
-  {
-    id: 3,
-    name: "Установить обновление KB-31642dv3875",
-    description: "Вышло критическое обновление для Windows",
-    status: false,
-    created: Date.now(),
-  },
-];
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ticketsPath = path.join(__dirname, 'data', 'tickets.json');
+
+let tickets;
+
+try {
+  const data = fs.readFileSync(ticketsPath, 'utf8');
+  tickets = JSON.parse(data);
+  logger.info(`Loaded ${tickets.length} tickets from file`);
+} catch (error) {
+  logger.error(`Failed to load tickets.json: ${error.message}`);
+  // Если файла нет или он битый — начнём с дефолтного массива
+  tickets = [
+    {
+      id: 1,
+      name: 'Поменять краску в принтере, ком. 404',
+      description: 'Принтер HP LJ-1210, картриджи на складе',
+      status: false,
+      created: Date.now(),
+    },
+    {
+      id: 2,
+      name: 'Переустановить Windows, PC-Hall24',
+      description: '',
+      status: false,
+      created: Date.now(),
+    },
+    {
+      id: 3,
+      name: 'Установить обновление KB-31642dv3875',
+      description: 'Вышло критическое обновление для Windows',
+      status: false,
+      created: Date.now(),
+    },
+  ];
+}
+
+const saveTickets = () => {
+  try {
+    fs.writeFileSync(ticketsPath, JSON.stringify(tickets, null, 2), 'utf8');
+    logger.debug('Tickets saved to file');
+  } catch (err) {
+    logger.error('Failed to save tickets.json', err);
+  }
+};
 
 let stat = 4
 
@@ -77,6 +100,7 @@ app.use(async (request, response) => {
           created: Date.now(),
         };
         tickets.push(newTicket);
+        saveTickets()
         stat += 1;
         logger.info(`New ticket created: ${JSON.stringify(newTicket)}`);
         response.send(JSON.stringify(newTicket)).end();
@@ -89,7 +113,8 @@ app.use(async (request, response) => {
     case "deleteById": {
       const ticket = tickets.find((ticket) => ticket.id === Number(id));
       if (ticket) {
-        tickets = tickets.filter((ticket) => ticket.id !== id);
+        tickets = tickets.filter((ticket) => ticket.id !== Number(id));
+        saveTickets()
         logger.info(`Ticket deleted: ${JSON.stringify(ticket)}`);
         response.status(204).end();
       } else {
@@ -105,6 +130,7 @@ app.use(async (request, response) => {
     case "updateById": {
       const ticketId = Number(id);
       const ticket = tickets.find((t) => t.id === ticketId);
+      saveTickets()
       const updateData = request.body;
 
       if (!ticket) {
